@@ -163,8 +163,10 @@ async function sendInstagramMessage(recipientId, textMessage) {
   // Sanitize the token (strip quotes and whitespace from copy-paste mistakes)
   pageAccessToken = pageAccessToken.replace(/['"]/g, '').trim();
 
-  // Use graph.facebook.com directly as the official endpoint for Instagram Business messaging
-  const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${pageAccessToken}`;
+  // IGA tokens use graph.instagram.com; EAA tokens use graph.facebook.com
+  const apiHost = pageAccessToken.startsWith('IGA') ? 'graph.instagram.com' : 'graph.facebook.com';
+  const url = `https://${apiHost}/v21.0/me/messages?access_token=${pageAccessToken}`;
+  console.log(`🔍 SENDING to ${apiHost}`);
 
   const response = await axios.post(url, {
     recipient: {
@@ -189,9 +191,10 @@ async function fetchMessageDetails(mid) {
   console.log("🔍 DEBUG Token length:", pageAccessToken.length);
   console.log("🔍 DEBUG Token starts with:", pageAccessToken.substring(0, 15));
 
-  // Use graph.facebook.com directly as the official Meta Graph API host for Instagram Messaging
-  const url = `https://graph.facebook.com/v21.0/${mid}?fields=message,from&access_token=${pageAccessToken}`;
-  console.log(`🔍 BACKGROUND: Fetching mid details from: https://graph.facebook.com/v21.0/${mid}?fields=message,from`);
+  // IGA tokens use graph.instagram.com; EAA tokens use graph.facebook.com
+  const apiHost = pageAccessToken.startsWith('IGA') ? 'graph.instagram.com' : 'graph.facebook.com';
+  const url = `https://${apiHost}/v21.0/${mid}?fields=message,from&access_token=${pageAccessToken}`;
+  console.log(`🔍 BACKGROUND: Fetching mid details from ${apiHost}`);
 
   try {
     const response = await axios.get(url, { timeout: 8000 }); // 8 seconds timeout
@@ -200,6 +203,8 @@ async function fetchMessageDetails(mid) {
     if (!data) {
       throw new Error('Failed to retrieve message details from Graph API');
     }
+
+    console.log("🔍 BACKGROUND: Raw API response:", JSON.stringify(data));
 
     // Extract message text
     let text = '';
