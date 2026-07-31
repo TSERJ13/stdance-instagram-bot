@@ -223,6 +223,8 @@ async function fetchMessageDetails(mid) {
 
     return { text, senderId };
   } catch (err) {
+    console.log("🔍 DEBUG Token length on failure:", pageAccessToken ? pageAccessToken.length : 'none');
+    console.log("🔍 DEBUG Token starts with on failure:", pageAccessToken ? pageAccessToken.substring(0, 15) : 'none');
     if (err.response) {
       console.log("❌ GRAPH API ERROR RESPONSE:", JSON.stringify(err.response.data, null, 2));
     }
