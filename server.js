@@ -156,10 +156,12 @@ async function getGeminiResponse(userText) {
 }
 
 async function sendInstagramMessage(recipientId, textMessage) {
-  const pageAccessToken = process.env.PAGE_ACCESS_TOKEN;
+  let pageAccessToken = process.env.PAGE_ACCESS_TOKEN;
   if (!pageAccessToken) {
     throw new Error('PAGE_ACCESS_TOKEN is not defined');
   }
+  // Sanitize the token (strip quotes and whitespace from copy-paste mistakes)
+  pageAccessToken = pageAccessToken.replace(/['"]/g, '').trim();
 
   // Use graph.facebook.com directly as the official endpoint for Instagram Business messaging
   const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${pageAccessToken}`;
@@ -177,10 +179,12 @@ async function sendInstagramMessage(recipientId, textMessage) {
 }
 
 async function fetchMessageDetails(mid) {
-  const pageAccessToken = process.env.PAGE_ACCESS_TOKEN;
+  let pageAccessToken = process.env.PAGE_ACCESS_TOKEN;
   if (!pageAccessToken) {
     throw new Error('PAGE_ACCESS_TOKEN is not defined');
   }
+  // Sanitize the token (strip quotes and whitespace from copy-paste mistakes)
+  pageAccessToken = pageAccessToken.replace(/['"]/g, '').trim();
 
   // Use graph.facebook.com directly as the official Meta Graph API host for Instagram Messaging
   const url = `https://graph.facebook.com/v21.0/${mid}?fields=message,from&access_token=${pageAccessToken}`;
