@@ -186,6 +186,9 @@ async function fetchMessageDetails(mid) {
   // Sanitize the token (strip quotes and whitespace from copy-paste mistakes)
   pageAccessToken = pageAccessToken.replace(/['"]/g, '').trim();
 
+  console.log("🔍 DEBUG Token length:", pageAccessToken.length);
+  console.log("🔍 DEBUG Token starts with:", pageAccessToken.substring(0, 15));
+
   // Use graph.facebook.com directly as the official Meta Graph API host for Instagram Messaging
   const url = `https://graph.facebook.com/v21.0/${mid}?fields=message,from&access_token=${pageAccessToken}`;
   console.log(`🔍 BACKGROUND: Fetching mid details from: https://graph.facebook.com/v21.0/${mid}?fields=message,from`);
