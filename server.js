@@ -186,34 +186,41 @@ async function fetchMessageDetails(mid) {
   const url = `https://graph.facebook.com/v21.0/${mid}?fields=message,from&access_token=${pageAccessToken}`;
   console.log(`🔍 BACKGROUND: Fetching mid details from: https://graph.facebook.com/v21.0/${mid}?fields=message,from`);
 
-  const response = await axios.get(url, { timeout: 8000 }); // 8 seconds timeout
-  const data = response.data;
+  try {
+    const response = await axios.get(url, { timeout: 8000 }); // 8 seconds timeout
+    const data = response.data;
 
-  if (!data) {
-    throw new Error('Failed to retrieve message details from Graph API');
-  }
-
-  // Extract message text
-  let text = '';
-  if (data.message) {
-    if (typeof data.message === 'string') {
-      text = data.message;
-    } else if (data.message.text) {
-      text = data.message.text;
+    if (!data) {
+      throw new Error('Failed to retrieve message details from Graph API');
     }
-  }
 
-  // Extract sender ID
-  const senderId = data.from?.id;
+    // Extract message text
+    let text = '';
+    if (data.message) {
+      if (typeof data.message === 'string') {
+        text = data.message;
+      } else if (data.message.text) {
+        text = data.message.text;
+      }
+    }
 
-  if (!text) {
-    throw new Error(`Could not extract message text from: ${JSON.stringify(data)}`);
-  }
-  if (!senderId) {
-    throw new Error(`Could not extract sender ID from: ${JSON.stringify(data)}`);
-  }
+    // Extract sender ID
+    const senderId = data.from?.id;
 
-  return { text, senderId };
+    if (!text) {
+      throw new Error(`Could not extract message text from: ${JSON.stringify(data)}`);
+    }
+    if (!senderId) {
+      throw new Error(`Could not extract sender ID from: ${JSON.stringify(data)}`);
+    }
+
+    return { text, senderId };
+  } catch (err) {
+    if (err.response) {
+      console.log("❌ GRAPH API ERROR RESPONSE:", JSON.stringify(err.response.data, null, 2));
+    }
+    throw err;
+  }
 }
 
 app.listen(PORT, () => {
