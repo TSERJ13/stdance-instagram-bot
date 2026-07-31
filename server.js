@@ -161,7 +161,8 @@ async function sendInstagramMessage(recipientId, textMessage) {
     throw new Error('PAGE_ACCESS_TOKEN is not defined');
   }
 
-  const url = `https://graph.instagram.com/v21.0/me/messages?access_token=${pageAccessToken}`;
+  // Use graph.facebook.com directly as the official endpoint for Instagram Business messaging
+  const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${pageAccessToken}`;
 
   const response = await axios.post(url, {
     recipient: {
@@ -181,18 +182,12 @@ async function fetchMessageDetails(mid) {
     throw new Error('PAGE_ACCESS_TOKEN is not defined');
   }
 
-  let data = null;
-  // Try graph.instagram.com first
-  try {
-    const url = `https://graph.instagram.com/v21.0/${mid}?fields=message,from&access_token=${pageAccessToken}`;
-    const response = await axios.get(url, { timeout: 8000 }); // 8 seconds timeout
-    data = response.data;
-  } catch (err) {
-    console.log(`⚠️ graph.instagram.com failed, trying graph.facebook.com: ${err.message}`);
-    const url = `https://graph.facebook.com/v21.0/${mid}?fields=message,from&access_token=${pageAccessToken}`;
-    const response = await axios.get(url, { timeout: 8000 }); // 8 seconds timeout
-    data = response.data;
-  }
+  // Use graph.facebook.com directly as the official Meta Graph API host for Instagram Messaging
+  const url = `https://graph.facebook.com/v21.0/${mid}?fields=message,from&access_token=${pageAccessToken}`;
+  console.log(`🔍 BACKGROUND: Fetching mid details from: https://graph.facebook.com/v21.0/${mid}?fields=message,from`);
+
+  const response = await axios.get(url, { timeout: 8000 }); // 8 seconds timeout
+  const data = response.data;
 
   if (!data) {
     throw new Error('Failed to retrieve message details from Graph API');
