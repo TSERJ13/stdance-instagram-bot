@@ -35,6 +35,7 @@ app.get('/webhook', (req, res) => {
 
 // 3. Receive Webhook Events (POST)
 app.post('/webhook', (req, res) => {
+  console.log("📥 POST /webhook ROUTE ENTERED!");
   try {
     const body = req.body;
 
@@ -55,43 +56,70 @@ app.post('/webhook', (req, res) => {
 });
 
 async function processWebhookBackground(body) {
-  for (const entry of body.entry) {
-    if (entry.messaging) {
-      for (const event of entry.messaging) {
-        const senderId = event.sender?.id;
-        let messageText = event.message?.text;
-        const isEcho = event.message?.is_echo;
-        const messageEditMid = event.message_edit?.mid;
+  console.log("🔍 BACKGROUND: Starting processing...");
+  if (!body.entry || !Array.isArray(body.entry)) {
+    console.log("🔍 BACKGROUND: body.entry is not an array or is missing");
+    return;
+  }
 
-        // Fallback for message_edit events
-        if (senderId && !messageText && messageEditMid && !isEcho) {
-          try {
-            messageText = await fetchMessageTextByMid(messageEditMid);
-            console.log("🔧 FETCHED TEXT FROM EDIT EVENT:", messageText);
-          } catch (fetchErr) {
-            console.log("❌ ERROR:", fetchErr.stack || fetchErr.message);
-          }
+  console.log(`🔍 BACKGROUND: body.entry has ${body.entry.length} entries`);
+
+  for (let i = 0; i < body.entry.length; i++) {
+    const entry = body.entry[i];
+    console.log(`🔍 BACKGROUND: Entry [${i}] keys:`, Object.keys(entry));
+
+    if (!entry.messaging || !Array.isArray(entry.messaging)) {
+      console.log(`🔍 BACKGROUND: Entry [${i}].messaging is not an array or is missing`);
+      continue;
+    }
+
+    console.log(`🔍 BACKGROUND: Entry [${i}].messaging has ${entry.messaging.length} events`);
+
+    for (let j = 0; j < entry.messaging.length; j++) {
+      const event = entry.messaging[j];
+      console.log(`🔍 BACKGROUND: Event [${i}][${j}] keys:`, Object.keys(event));
+
+      const senderId = event.sender?.id;
+      let messageText = event.message?.text;
+      const isEcho = event.message?.is_echo;
+      const messageEditMid = event.message_edit?.mid;
+
+      console.log(`🔍 BACKGROUND: senderId=${senderId}, messageText=${messageText}, messageEditMid=${messageEditMid}, isEcho=${isEcho}`);
+
+      // Fallback for message_edit events
+      if (senderId && !messageText && messageEditMid && !isEcho) {
+        try {
+          console.log(`🔍 BACKGROUND: Fallback condition met. Fetching text for mid: ${messageEditMid}`);
+          messageText = await fetchMessageTextByMid(messageEditMid);
+          console.log("🔧 FETCHED TEXT FROM EDIT EVENT:", messageText);
+        } catch (fetchErr) {
+          console.log("❌ ERROR:", fetchErr.stack || fetchErr.message);
         }
+      }
 
-        // Only respond to messages that contain text and are not bot echos
-        if (senderId && messageText && !isEcho) {
-          console.log("🎯 REAL MESSAGE RECEIVED:", messageText, "FROM:", senderId);
+      // Only respond to messages that contain text and are not bot echos
+      if (senderId && messageText && !isEcho) {
+        console.log("🎯 REAL MESSAGE RECEIVED:", messageText, "FROM:", senderId);
 
-          try {
-            // Call Gemini 2.0 Flash
-            const replyText = await getGeminiResponse(messageText);
-            console.log("🤖 GEMINI RESPONSE:", replyText);
+        try {
+          // Call Gemini 2.0 Flash
+          console.log(`🔍 BACKGROUND: Requesting Gemini API for: "${messageText}"`);
+          const replyText = await getGeminiResponse(messageText);
+          console.log("🤖 GEMINI RESPONSE:", replyText);
 
-            // Send reply to Instagram
-            const igRes = await sendInstagramMessage(senderId, replyText);
-            console.log("📤 SENT TO INSTAGRAM, status:", igRes.status);
-          } catch (apiErr) {
-            console.log("❌ ERROR:", apiErr.stack || apiErr.message);
-          }
+          // Send reply to Instagram
+          console.log(`🔍 BACKGROUND: Sending reply to Instagram for: ${senderId}`);
+          const igRes = await sendInstagramMessage(senderId, replyText);
+          console.log("📤 SENT TO INSTAGRAM, status:", igRes.status);
+        } catch (apiErr) {
+          console.log("❌ ERROR:", apiErr.stack || apiErr.message);
         }
+      } else {
+        console.log(`🔍 BACKGROUND: Skipping response. Conditions not met. (hasText=${!!messageText}, isNotEcho=${!isEcho})`);
       }
     }
   }
+  console.log("🔍 BACKGROUND: Processing completed.");
 }
 
 // Helpers
