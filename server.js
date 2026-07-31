@@ -79,19 +79,21 @@ async function processWebhookBackground(body) {
       const event = entry.messaging[j];
       console.log(`🔍 BACKGROUND: Event [${i}][${j}] keys:`, Object.keys(event));
 
-      const senderId = event.sender?.id;
+      let senderId = event.sender?.id;
       let messageText = event.message?.text;
       const isEcho = event.message?.is_echo;
       const messageEditMid = event.message_edit?.mid;
 
       console.log(`🔍 BACKGROUND: senderId=${senderId}, messageText=${messageText}, messageEditMid=${messageEditMid}, isEcho=${isEcho}`);
 
-      // Fallback for message_edit events
-      if (senderId && !messageText && messageEditMid && !isEcho) {
+      // Fallback for message_edit events (senderId can be missing in webhook body, fetch details instead)
+      if (!messageText && messageEditMid && !isEcho) {
         try {
-          console.log(`🔍 BACKGROUND: Fallback condition met. Fetching text for mid: ${messageEditMid}`);
-          messageText = await fetchMessageTextByMid(messageEditMid);
-          console.log("🔧 FETCHED TEXT FROM EDIT EVENT:", messageText);
+          console.log(`🔍 BACKGROUND: Fallback condition met. Fetching details for mid: ${messageEditMid}`);
+          const details = await fetchMessageDetails(messageEditMid);
+          messageText = details.text;
+          senderId = details.senderId;
+          console.log(`🔧 FETCHED TEXT FROM EDIT EVENT: "${messageText}" FROM: ${senderId}`);
         } catch (fetchErr) {
           console.log("❌ ERROR:", fetchErr.stack || fetchErr.message);
         }
@@ -173,38 +175,50 @@ async function sendInstagramMessage(recipientId, textMessage) {
   return response;
 }
 
-async function fetchMessageTextByMid(mid) {
+async function fetchMessageDetails(mid) {
   const pageAccessToken = process.env.PAGE_ACCESS_TOKEN;
   if (!pageAccessToken) {
     throw new Error('PAGE_ACCESS_TOKEN is not defined');
   }
 
+  let data = null;
   // Try graph.instagram.com first
   try {
-    const url = `https://graph.instagram.com/v21.0/${mid}?fields=message&access_token=${pageAccessToken}`;
+    const url = `https://graph.instagram.com/v21.0/${mid}?fields=message,from&access_token=${pageAccessToken}`;
     const response = await axios.get(url, { timeout: 8000 }); // 8 seconds timeout
-    return extractText(response.data);
+    data = response.data;
   } catch (err) {
     console.log(`⚠️ graph.instagram.com failed, trying graph.facebook.com: ${err.message}`);
-    const url = `https://graph.facebook.com/v21.0/${mid}?fields=message&access_token=${pageAccessToken}`;
+    const url = `https://graph.facebook.com/v21.0/${mid}?fields=message,from&access_token=${pageAccessToken}`;
     const response = await axios.get(url, { timeout: 8000 }); // 8 seconds timeout
-    return extractText(response.data);
+    data = response.data;
   }
-}
 
-function extractText(fetchedData) {
-  let fetchedText = '';
-  if (fetchedData && fetchedData.message) {
-    if (typeof fetchedData.message === 'string') {
-      fetchedText = fetchedData.message;
-    } else if (fetchedData.message.text) {
-      fetchedText = fetchedData.message.text;
+  if (!data) {
+    throw new Error('Failed to retrieve message details from Graph API');
+  }
+
+  // Extract message text
+  let text = '';
+  if (data.message) {
+    if (typeof data.message === 'string') {
+      text = data.message;
+    } else if (data.message.text) {
+      text = data.message.text;
     }
   }
-  if (!fetchedText) {
-    throw new Error(`Could not extract message text from: ${JSON.stringify(fetchedData)}`);
+
+  // Extract sender ID
+  const senderId = data.from?.id;
+
+  if (!text) {
+    throw new Error(`Could not extract message text from: ${JSON.stringify(data)}`);
   }
-  return fetchedText;
+  if (!senderId) {
+    throw new Error(`Could not extract sender ID from: ${JSON.stringify(data)}`);
+  }
+
+  return { text, senderId };
 }
 
 app.listen(PORT, () => {
