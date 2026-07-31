@@ -45,8 +45,19 @@ app.post('/webhook', async (req, res) => {
         if (entry.messaging) {
           for (const event of entry.messaging) {
             const senderId = event.sender?.id;
-            const messageText = event.message?.text;
+            let messageText = event.message?.text;
             const isEcho = event.message?.is_echo;
+            const messageEditMid = event.message_edit?.mid;
+
+            // Fallback for message_edit events
+            if (senderId && !messageText && messageEditMid && !isEcho) {
+              try {
+                messageText = await fetchMessageTextByMid(messageEditMid);
+                console.log("🔧 FETCHED TEXT FROM EDIT EVENT:", messageText);
+              } catch (fetchErr) {
+                console.log("❌ ERROR:", fetchErr.message);
+              }
+            }
 
             // Only respond to messages that contain text and are not bot echos
             if (senderId && messageText && !isEcho) {
@@ -126,6 +137,40 @@ async function sendInstagramMessage(recipientId, textMessage) {
   });
 
   return response;
+}
+
+async function fetchMessageTextByMid(mid) {
+  const pageAccessToken = process.env.PAGE_ACCESS_TOKEN;
+  if (!pageAccessToken) {
+    throw new Error('PAGE_ACCESS_TOKEN is not defined');
+  }
+
+  // Try graph.instagram.com first
+  try {
+    const url = `https://graph.instagram.com/v21.0/${mid}?fields=message&access_token=${pageAccessToken}`;
+    const response = await axios.get(url);
+    return extractText(response.data);
+  } catch (err) {
+    console.log(`⚠️ graph.instagram.com failed, trying graph.facebook.com: ${err.message}`);
+    const url = `https://graph.facebook.com/v21.0/${mid}?fields=message&access_token=${pageAccessToken}`;
+    const response = await axios.get(url);
+    return extractText(response.data);
+  }
+}
+
+function extractText(fetchedData) {
+  let fetchedText = '';
+  if (fetchedData && fetchedData.message) {
+    if (typeof fetchedData.message === 'string') {
+      fetchedText = fetchedData.message;
+    } else if (fetchedData.message.text) {
+      fetchedText = fetchedData.message.text;
+    }
+  }
+  if (!fetchedText) {
+    throw new Error(`Could not extract message text from: ${JSON.stringify(fetchedData)}`);
+  }
+  return fetchedText;
 }
 
 app.listen(PORT, () => {
