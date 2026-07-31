@@ -34,59 +34,65 @@ app.get('/webhook', (req, res) => {
 });
 
 // 3. Receive Webhook Events (POST)
-app.post('/webhook', async (req, res) => {
+app.post('/webhook', (req, res) => {
   try {
     const body = req.body;
 
     console.log('📬 Received Webhook Body:', JSON.stringify(body, null, 2));
 
+    // Immediately respond to Meta to prevent timeout and retries
+    res.status(200).send('EVENT_RECEIVED');
+
     if (body && body.object === 'instagram') {
-      for (const entry of body.entry) {
-        if (entry.messaging) {
-          for (const event of entry.messaging) {
-            const senderId = event.sender?.id;
-            let messageText = event.message?.text;
-            const isEcho = event.message?.is_echo;
-            const messageEditMid = event.message_edit?.mid;
+      // Process in background
+      processWebhookBackground(body).catch(err => {
+        console.log("❌ BACKGROUND ERROR:", err.stack || err.message);
+      });
+    }
+  } catch (err) {
+    console.log("❌ ERROR:", err.stack || err.message);
+  }
+});
 
-            // Fallback for message_edit events
-            if (senderId && !messageText && messageEditMid && !isEcho) {
-              try {
-                messageText = await fetchMessageTextByMid(messageEditMid);
-                console.log("🔧 FETCHED TEXT FROM EDIT EVENT:", messageText);
-              } catch (fetchErr) {
-                console.log("❌ ERROR:", fetchErr.stack || fetchErr.message);
-              }
-            }
+async function processWebhookBackground(body) {
+  for (const entry of body.entry) {
+    if (entry.messaging) {
+      for (const event of entry.messaging) {
+        const senderId = event.sender?.id;
+        let messageText = event.message?.text;
+        const isEcho = event.message?.is_echo;
+        const messageEditMid = event.message_edit?.mid;
 
-            // Only respond to messages that contain text and are not bot echos
-            if (senderId && messageText && !isEcho) {
-              console.log("🎯 REAL MESSAGE RECEIVED:", messageText, "FROM:", senderId);
+        // Fallback for message_edit events
+        if (senderId && !messageText && messageEditMid && !isEcho) {
+          try {
+            messageText = await fetchMessageTextByMid(messageEditMid);
+            console.log("🔧 FETCHED TEXT FROM EDIT EVENT:", messageText);
+          } catch (fetchErr) {
+            console.log("❌ ERROR:", fetchErr.stack || fetchErr.message);
+          }
+        }
 
-              try {
-                // Call Gemini 2.0 Flash
-                const replyText = await getGeminiResponse(messageText);
-                console.log("🤖 GEMINI RESPONSE:", replyText);
+        // Only respond to messages that contain text and are not bot echos
+        if (senderId && messageText && !isEcho) {
+          console.log("🎯 REAL MESSAGE RECEIVED:", messageText, "FROM:", senderId);
 
-                // Send reply to Instagram
-                const igRes = await sendInstagramMessage(senderId, replyText);
-                console.log("📤 SENT TO INSTAGRAM, status:", igRes.status);
-              } catch (apiErr) {
-                console.log("❌ ERROR:", apiErr.stack || apiErr.message);
-              }
-            }
+          try {
+            // Call Gemini 2.0 Flash
+            const replyText = await getGeminiResponse(messageText);
+            console.log("🤖 GEMINI RESPONSE:", replyText);
+
+            // Send reply to Instagram
+            const igRes = await sendInstagramMessage(senderId, replyText);
+            console.log("📤 SENT TO INSTAGRAM, status:", igRes.status);
+          } catch (apiErr) {
+            console.log("❌ ERROR:", apiErr.stack || apiErr.message);
           }
         }
       }
-      return res.status(200).send('EVENT_RECEIVED');
     }
-
-    return res.sendStatus(404);
-  } catch (err) {
-    console.log("❌ ERROR:", err.stack || err.message);
-    return res.status(200).send('ERROR_HANDLED');
   }
-});
+}
 
 // Helpers
 async function getGeminiResponse(userText) {
@@ -109,7 +115,7 @@ async function getGeminiResponse(userText) {
         text: "შენ ხარ ST Dance Studio-ს (ბათუმის ცეკვების სტუდია) მეგობრული ასისტენტი Instagram-ზე. უპასუხე ქართულად, მოკლედ და თავაზიანად."
       }]
     }
-  });
+  }, { timeout: 8000 }); // 8 seconds timeout
 
   const reply = response.data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!reply) {
@@ -134,7 +140,7 @@ async function sendInstagramMessage(recipientId, textMessage) {
     message: {
       text: textMessage
     }
-  });
+  }, { timeout: 8000 }); // 8 seconds timeout
 
   return response;
 }
@@ -148,12 +154,12 @@ async function fetchMessageTextByMid(mid) {
   // Try graph.instagram.com first
   try {
     const url = `https://graph.instagram.com/v21.0/${mid}?fields=message&access_token=${pageAccessToken}`;
-    const response = await axios.get(url);
+    const response = await axios.get(url, { timeout: 8000 }); // 8 seconds timeout
     return extractText(response.data);
   } catch (err) {
     console.log(`⚠️ graph.instagram.com failed, trying graph.facebook.com: ${err.message}`);
     const url = `https://graph.facebook.com/v21.0/${mid}?fields=message&access_token=${pageAccessToken}`;
-    const response = await axios.get(url);
+    const response = await axios.get(url, { timeout: 8000 }); // 8 seconds timeout
     return extractText(response.data);
   }
 }
