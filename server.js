@@ -50,25 +50,25 @@ app.post('/webhook', async (req, res) => {
 
             // Only respond to messages that contain text and are not bot echos
             if (senderId && messageText && !isEcho) {
-              console.log(`💬 Incoming message from ${senderId}: "${messageText}"`);
+              console.log("🎯 REAL MESSAGE RECEIVED:", messageText, "FROM:", senderId);
 
               try {
                 // Call Gemini 2.0 Flash
                 const replyText = await getGeminiResponse(messageText);
-                console.log(`🤖 Gemini response: "${replyText}"`);
+                console.log("🤖 GEMINI RESPONSE:", replyText);
 
                 // Send reply to Instagram
-                await sendInstagramMessage(senderId, replyText);
-                console.log(`✅ Reply sent successfully to ${senderId}`);
+                const igRes = await sendInstagramMessage(senderId, replyText);
+                console.log("📤 SENT TO INSTAGRAM, status:", igRes.status);
               } catch (apiErr) {
-                console.error(`❌ Error in Gemini or Instagram API for ${senderId}:`, apiErr.message);
+                console.log("❌ ERROR:", apiErr.message);
               }
             }
           }
         }
       }
     } catch (err) {
-      console.error('❌ Error parsing webhook event:', err.message);
+      console.log("❌ ERROR:", err.message);
     }
 
     return res.status(200).send('EVENT_RECEIVED');
@@ -125,7 +125,7 @@ async function sendInstagramMessage(recipientId, textMessage) {
     }
   });
 
-  return response.data;
+  return response;
 }
 
 app.listen(PORT, () => {
