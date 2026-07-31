@@ -35,12 +35,12 @@ app.get('/webhook', (req, res) => {
 
 // 3. Receive Webhook Events (POST)
 app.post('/webhook', async (req, res) => {
-  const body = req.body;
+  try {
+    const body = req.body;
 
-  console.log('📬 Received Webhook Body:', JSON.stringify(body, null, 2));
+    console.log('📬 Received Webhook Body:', JSON.stringify(body, null, 2));
 
-  if (body.object === 'instagram') {
-    try {
+    if (body && body.object === 'instagram') {
       for (const entry of body.entry) {
         if (entry.messaging) {
           for (const event of entry.messaging) {
@@ -55,7 +55,7 @@ app.post('/webhook', async (req, res) => {
                 messageText = await fetchMessageTextByMid(messageEditMid);
                 console.log("🔧 FETCHED TEXT FROM EDIT EVENT:", messageText);
               } catch (fetchErr) {
-                console.log("❌ ERROR:", fetchErr.message);
+                console.log("❌ ERROR:", fetchErr.stack || fetchErr.message);
               }
             }
 
@@ -72,20 +72,20 @@ app.post('/webhook', async (req, res) => {
                 const igRes = await sendInstagramMessage(senderId, replyText);
                 console.log("📤 SENT TO INSTAGRAM, status:", igRes.status);
               } catch (apiErr) {
-                console.log("❌ ERROR:", apiErr.message);
+                console.log("❌ ERROR:", apiErr.stack || apiErr.message);
               }
             }
           }
         }
       }
-    } catch (err) {
-      console.log("❌ ERROR:", err.message);
+      return res.status(200).send('EVENT_RECEIVED');
     }
 
-    return res.status(200).send('EVENT_RECEIVED');
+    return res.sendStatus(404);
+  } catch (err) {
+    console.log("❌ ERROR:", err.stack || err.message);
+    return res.status(200).send('ERROR_HANDLED');
   }
-
-  return res.sendStatus(404);
 });
 
 // Helpers
