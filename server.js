@@ -188,61 +188,41 @@ async function fetchMessageDetails(mid) {
   // Sanitize the token (strip quotes and whitespace from copy-paste mistakes)
   pageAccessToken = pageAccessToken.replace(/['"]/g, '').trim();
 
-  console.log("🔍 DEBUG Token length:", pageAccessToken.length);
-  console.log("🔍 DEBUG Token starts with:", pageAccessToken.substring(0, 15));
-
   // IGA tokens use graph.instagram.com; EAA tokens use graph.facebook.com
   const apiHost = pageAccessToken.startsWith('IGA') ? 'graph.instagram.com' : 'graph.facebook.com';
   
-  // Request all possible field names for message text and sender across Instagram and Facebook Graph APIs
-  const url = `https://${apiHost}/v21.0/${mid}?fields=id,text,message,from,sender&access_token=${pageAccessToken}`;
-  console.log(`🔍 BACKGROUND: Fetching mid details from ${apiHost} with multi-field query`);
+  // Use exact valid Meta Graph API fields: id,message,from
+  const url = `https://${apiHost}/v21.0/${mid}?fields=id,message,from&access_token=${pageAccessToken}`;
+  console.log(`🔍 BACKGROUND: Fetching mid details from ${apiHost}`);
 
   try {
-    let response = await axios.get(url, { timeout: 8000 });
-    let data = response.data;
-
-    // Fallback: If returned data is empty object {}, try querying without fields parameter
-    if (!data || Object.keys(data).length === 0) {
-      console.log(`⚠️ Multi-field query returned empty object, trying without fields param...`);
-      const fallbackUrl = `https://${apiHost}/v21.0/${mid}?access_token=${pageAccessToken}`;
-      response = await axios.get(fallbackUrl, { timeout: 8000 });
-      data = response.data;
-    }
+    const response = await axios.get(url, { timeout: 8000 });
+    const data = response.data;
 
     console.log("🔍 BACKGROUND: Raw API response:", JSON.stringify(data));
 
-    if (!data || Object.keys(data).length === 0) {
-      throw new Error(`Graph API returned empty object for mid: ${mid}`);
+    if (!data) {
+      throw new Error(`Graph API returned empty response for mid: ${mid}`);
     }
 
-    // Extract message text (supports 'text' and 'message' formats)
+    // Extract message text (Meta Graph API returns string or { text })
     let text = '';
-    if (data.text) {
-      text = typeof data.text === 'string' ? data.text : data.text.text;
-    } else if (data.message) {
+    if (data.message) {
       text = typeof data.message === 'string' ? data.message : data.message.text;
     }
 
-    // Extract sender ID (supports 'from', 'sender', or object/string formats)
-    let senderId = '';
-    if (data.from) {
-      senderId = typeof data.from === 'object' ? data.from.id : data.from;
-    } else if (data.sender) {
-      senderId = typeof data.sender === 'object' ? data.sender.id : data.sender;
-    }
+    // Extract sender ID from data.from.id
+    const senderId = data.from?.id;
 
     if (!text) {
-      throw new Error(`Could not extract message text from: ${JSON.stringify(data)}`);
+      throw new Error(`Could not extract message text from response: ${JSON.stringify(data)}`);
     }
     if (!senderId) {
-      throw new Error(`Could not extract sender ID from: ${JSON.stringify(data)}`);
+      throw new Error(`Could not extract sender ID from response: ${JSON.stringify(data)}`);
     }
 
     return { text, senderId };
   } catch (err) {
-    console.log("🔍 DEBUG Token length on failure:", pageAccessToken ? pageAccessToken.length : 'none');
-    console.log("🔍 DEBUG Token starts with on failure:", pageAccessToken ? pageAccessToken.substring(0, 15) : 'none');
     if (err.response) {
       console.log("❌ GRAPH API ERROR RESPONSE:", JSON.stringify(err.response.data, null, 2));
     }
