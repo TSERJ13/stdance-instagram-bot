@@ -193,31 +193,44 @@ async function fetchMessageDetails(mid) {
 
   // IGA tokens use graph.instagram.com; EAA tokens use graph.facebook.com
   const apiHost = pageAccessToken.startsWith('IGA') ? 'graph.instagram.com' : 'graph.facebook.com';
-  const url = `https://${apiHost}/v21.0/${mid}?fields=message,from&access_token=${pageAccessToken}`;
-  console.log(`🔍 BACKGROUND: Fetching mid details from ${apiHost}`);
+  
+  // Request all possible field names for message text and sender across Instagram and Facebook Graph APIs
+  const url = `https://${apiHost}/v21.0/${mid}?fields=id,text,message,from,sender&access_token=${pageAccessToken}`;
+  console.log(`🔍 BACKGROUND: Fetching mid details from ${apiHost} with multi-field query`);
 
   try {
-    const response = await axios.get(url, { timeout: 8000 }); // 8 seconds timeout
-    const data = response.data;
+    let response = await axios.get(url, { timeout: 8000 });
+    let data = response.data;
 
-    if (!data) {
-      throw new Error('Failed to retrieve message details from Graph API');
+    // Fallback: If returned data is empty object {}, try querying without fields parameter
+    if (!data || Object.keys(data).length === 0) {
+      console.log(`⚠️ Multi-field query returned empty object, trying without fields param...`);
+      const fallbackUrl = `https://${apiHost}/v21.0/${mid}?access_token=${pageAccessToken}`;
+      response = await axios.get(fallbackUrl, { timeout: 8000 });
+      data = response.data;
     }
 
     console.log("🔍 BACKGROUND: Raw API response:", JSON.stringify(data));
 
-    // Extract message text
-    let text = '';
-    if (data.message) {
-      if (typeof data.message === 'string') {
-        text = data.message;
-      } else if (data.message.text) {
-        text = data.message.text;
-      }
+    if (!data || Object.keys(data).length === 0) {
+      throw new Error(`Graph API returned empty object for mid: ${mid}`);
     }
 
-    // Extract sender ID
-    const senderId = data.from?.id;
+    // Extract message text (supports 'text' and 'message' formats)
+    let text = '';
+    if (data.text) {
+      text = typeof data.text === 'string' ? data.text : data.text.text;
+    } else if (data.message) {
+      text = typeof data.message === 'string' ? data.message : data.message.text;
+    }
+
+    // Extract sender ID (supports 'from', 'sender', or object/string formats)
+    let senderId = '';
+    if (data.from) {
+      senderId = typeof data.from === 'object' ? data.from.id : data.from;
+    } else if (data.sender) {
+      senderId = typeof data.sender === 'object' ? data.sender.id : data.sender;
+    }
 
     if (!text) {
       throw new Error(`Could not extract message text from: ${JSON.stringify(data)}`);
