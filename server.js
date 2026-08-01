@@ -15,6 +15,72 @@ app.get('/', (req, res) => {
   res.send('OK');
 });
 
+// 1.5 Data Deletion Instructions Page (GET)
+app.get('/data-deletion', (req, res) => {
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ST Dance Studio — Data Deletion Instructions</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #0f0f13;
+      color: #e0e0e0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .container {
+      background-color: #1a1a24;
+      border: 1px solid #2d2d3d;
+      border-radius: 12px;
+      max-width: 600px;
+      padding: 40px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+    h1 {
+      color: #d4af37;
+      font-size: 1.8rem;
+      margin-top: 0;
+      margin-bottom: 20px;
+      border-bottom: 1px solid #2d2d3d;
+      padding-bottom: 15px;
+    }
+    p {
+      line-height: 1.7;
+      font-size: 1.05rem;
+      color: #cccccc;
+      margin-bottom: 20px;
+    }
+    a {
+      color: #d4af37;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>ST Dance Studio — Data Deletion Instructions</h1>
+    <p>If you would like to request deletion of your personal data collected through our Instagram messaging service, please contact us at <a href="mailto:stdancestudio13@gmail.com">stdancestudio13@gmail.com</a> or call <a href="tel:+995514199966">+995 514 19 99 66</a>.</p>
+    <p>We will process your data deletion request within 30 days and confirm once completed.</p>
+    <p>For more information, see our Privacy Policy: <a href="https://stdance.ge/en/privacy" target="_blank" rel="noopener noreferrer">https://stdance.ge/en/privacy</a></p>
+  </div>
+</body>
+</html>`;
+  res.setHeader('Content-Type', 'text/html');
+  res.status(200).send(html);
+});
+
 // 2. Webhook Verification (GET)
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
