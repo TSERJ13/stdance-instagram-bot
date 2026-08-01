@@ -71,13 +71,27 @@ async function processWebhookBackground(body) {
     for (let j = 0; j < entry.messaging.length; j++) {
       const event = entry.messaging[j];
 
-      const senderId = event.sender?.id;
-      const messageText = event.message?.text;
+      let senderId = event.sender?.id;
+      let messageText = event.message?.text;
       const isEcho = event.message?.is_echo;
+      const messageEditMid = event.message_edit?.mid;
 
-      console.log(`🔍 EVENT: senderId=${senderId}, messageText="${messageText || ''}", isEcho=${isEcho}`);
+      console.log(`🔍 EVENT: senderId=${senderId}, messageText="${messageText || ''}", messageEditMid=${messageEditMid}, isEcho=${isEcho}`);
 
-      // Respond only to incoming text messages from users (ignore bot echos)
+      // Fallback for message_edit events
+      if (!messageText && messageEditMid && !isEcho) {
+        try {
+          console.log(`🔍 BACKGROUND: Fallback condition met for message_edit. Fetching details for mid: ${messageEditMid}`);
+          const details = await fetchMessageDetails(messageEditMid);
+          messageText = details.text;
+          senderId = details.senderId;
+          console.log(`🔧 FETCHED DETAILS: "${messageText}" FROM: ${senderId}`);
+        } catch (fetchErr) {
+          console.log("❌ FALLBACK FETCH ERROR:", fetchErr.message);
+        }
+      }
+
+      // Respond to text messages from users (ignore bot echos)
       if (senderId && messageText && !isEcho) {
         console.log("🎯 REAL MESSAGE RECEIVED:", messageText, "FROM:", senderId);
 
@@ -138,13 +152,11 @@ async function sendInstagramMessage(recipientId, textMessage) {
   if (!pageAccessToken) {
     throw new Error('PAGE_ACCESS_TOKEN is not defined');
   }
-  // Sanitize the token (strip quotes and whitespace from copy-paste mistakes)
   pageAccessToken = pageAccessToken.replace(/['"]/g, '').trim();
 
-  // IGA tokens use graph.instagram.com; EAA tokens use graph.facebook.com
-  const apiHost = pageAccessToken.startsWith('IGA') ? 'graph.instagram.com' : 'graph.facebook.com';
-  const url = `https://${apiHost}/v21.0/me/messages?access_token=${pageAccessToken}`;
-  console.log(`🔍 SENDING to ${apiHost}`);
+  // Instagram Login tokens use graph.instagram.com
+  const url = `https://graph.instagram.com/v21.0/me/messages?access_token=${pageAccessToken}`;
+  console.log(`🔍 SENDING to graph.instagram.com`);
 
   const response = await axios.post(url, {
     recipient: {
@@ -165,58 +177,66 @@ async function fetchMessageDetails(mid) {
   }
   pageAccessToken = pageAccessToken.replace(/['"]/g, '').trim();
 
-  // Try graph.instagram.com first, then fallback to graph.facebook.com
-  const hosts = ['graph.instagram.com', 'graph.facebook.com'];
-  let data = null;
-  let lastErr = null;
+  const host = 'graph.instagram.com';
 
-  for (const host of hosts) {
-    const url = `https://${host}/v21.0/${mid}?fields=id,message,from&access_token=${pageAccessToken}`;
-    console.log(`🔍 BACKGROUND: Fetching mid details from ${host}...`);
+  // 1. Try direct mid query on graph.instagram.com
+  const midUrl = `https://${host}/v21.0/${mid}?fields=id,message,from,to&access_token=${pageAccessToken}`;
+  console.log(`🌐 REQUEST URL: ${midUrl}`);
 
-    try {
-      const response = await axios.get(url, { timeout: 8000 });
-      const resData = response.data;
-      console.log(`🔍 BACKGROUND: Raw API response from ${host}:`, JSON.stringify(resData));
+  try {
+    const res1 = await axios.get(midUrl, { timeout: 8000 });
+    console.log(`📡 HTTP STATUS: ${res1.status} FROM: ${midUrl}`);
+    console.log(`📦 RESPONSE BODY:`, JSON.stringify(res1.data));
 
-      if (resData && Object.keys(resData).length > 0) {
-        data = resData;
-        break; // Successfully received non-empty data!
-      } else {
-        console.log(`⚠️ ${host} returned empty object {}, trying next host...`);
-      }
-    } catch (err) {
-      lastErr = err;
-      if (err.response) {
-        console.log(`❌ ERROR response from ${host}:`, JSON.stringify(err.response.data, null, 2));
-      } else {
-        console.log(`❌ ERROR from ${host}:`, err.message);
-      }
+    let text = res1.data?.message?.text || (typeof res1.data?.message === 'string' ? res1.data.message : '');
+    let senderId = res1.data?.from?.id;
+
+    if (text && senderId) {
+      return { text, senderId };
+    }
+  } catch (err1) {
+    if (err1.response) {
+      console.log(`📡 HTTP STATUS: ${err1.response.status} FROM: ${midUrl}`);
+      console.log(`📦 ERROR BODY:`, JSON.stringify(err1.response.data));
+    } else {
+      console.log(`❌ ERROR: ${err1.message} FROM: ${midUrl}`);
     }
   }
 
-  if (!data) {
-    if (lastErr) throw lastErr;
-    throw new Error(`Both graph.instagram.com and graph.facebook.com returned empty response for mid: ${mid}`);
+  // 2. Alternative: Conversations endpoint query on graph.instagram.com
+  const convUrl = `https://${host}/v21.0/me/conversations?platform=instagram&fields=messages{id,message,from}&access_token=${pageAccessToken}`;
+  console.log(`🌐 REQUEST URL (conversations): ${convUrl}`);
+
+  try {
+    const res2 = await axios.get(convUrl, { timeout: 8000 });
+    console.log(`📡 HTTP STATUS: ${res2.status} FROM: ${convUrl}`);
+    console.log(`📦 RESPONSE BODY:`, JSON.stringify(res2.data));
+
+    const conversations = res2.data?.data;
+    if (Array.isArray(conversations) && conversations.length > 0) {
+      for (const conv of conversations) {
+        const messages = conv.messages?.data;
+        if (Array.isArray(messages) && messages.length > 0) {
+          const lastMsg = messages[0];
+          let text = lastMsg.message?.text || (typeof lastMsg.message === 'string' ? lastMsg.message : '');
+          let senderId = lastMsg.from?.id;
+          if (text && senderId) {
+            console.log(`✅ Extracted message from conversations: "${text}" from ${senderId}`);
+            return { text, senderId };
+          }
+        }
+      }
+    }
+  } catch (err2) {
+    if (err2.response) {
+      console.log(`📡 HTTP STATUS: ${err2.response.status} FROM: ${convUrl}`);
+      console.log(`📦 ERROR BODY:`, JSON.stringify(err2.response.data));
+    } else {
+      console.log(`❌ ERROR: ${err2.message} FROM: ${convUrl}`);
+    }
   }
 
-  // Extract message text
-  let text = '';
-  if (data.message) {
-    text = typeof data.message === 'string' ? data.message : data.message.text;
-  }
-
-  // Extract sender ID
-  const senderId = data.from?.id;
-
-  if (!text) {
-    throw new Error(`Could not extract message text from response: ${JSON.stringify(data)}`);
-  }
-  if (!senderId) {
-    throw new Error(`Could not extract sender ID from response: ${JSON.stringify(data)}`);
-  }
-
-  return { text, senderId };
+  throw new Error(`Could not fetch message details for mid: ${mid} via graph.instagram.com endpoints.`);
 }
 
 app.listen(PORT, () => {
