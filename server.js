@@ -185,49 +185,60 @@ async function fetchMessageDetails(mid) {
   if (!pageAccessToken) {
     throw new Error('PAGE_ACCESS_TOKEN is not defined');
   }
-  // Sanitize the token (strip quotes and whitespace from copy-paste mistakes)
   pageAccessToken = pageAccessToken.replace(/['"]/g, '').trim();
 
-  // IGA tokens use graph.instagram.com; EAA tokens use graph.facebook.com
-  const apiHost = pageAccessToken.startsWith('IGA') ? 'graph.instagram.com' : 'graph.facebook.com';
-  
-  // Use exact valid Meta Graph API fields: id,message,from
-  const url = `https://${apiHost}/v21.0/${mid}?fields=id,message,from&access_token=${pageAccessToken}`;
-  console.log(`🔍 BACKGROUND: Fetching mid details from ${apiHost}`);
+  // Try graph.instagram.com first, then fallback to graph.facebook.com
+  const hosts = ['graph.instagram.com', 'graph.facebook.com'];
+  let data = null;
+  let lastErr = null;
 
-  try {
-    const response = await axios.get(url, { timeout: 8000 });
-    const data = response.data;
+  for (const host of hosts) {
+    const url = `https://${host}/v21.0/${mid}?fields=id,message,from&access_token=${pageAccessToken}`;
+    console.log(`🔍 BACKGROUND: Fetching mid details from ${host}...`);
 
-    console.log("🔍 BACKGROUND: Raw API response:", JSON.stringify(data));
+    try {
+      const response = await axios.get(url, { timeout: 8000 });
+      const resData = response.data;
+      console.log(`🔍 BACKGROUND: Raw API response from ${host}:`, JSON.stringify(resData));
 
-    if (!data) {
-      throw new Error(`Graph API returned empty response for mid: ${mid}`);
+      if (resData && Object.keys(resData).length > 0) {
+        data = resData;
+        break; // Successfully received non-empty data!
+      } else {
+        console.log(`⚠️ ${host} returned empty object {}, trying next host...`);
+      }
+    } catch (err) {
+      lastErr = err;
+      if (err.response) {
+        console.log(`❌ ERROR response from ${host}:`, JSON.stringify(err.response.data, null, 2));
+      } else {
+        console.log(`❌ ERROR from ${host}:`, err.message);
+      }
     }
-
-    // Extract message text (Meta Graph API returns string or { text })
-    let text = '';
-    if (data.message) {
-      text = typeof data.message === 'string' ? data.message : data.message.text;
-    }
-
-    // Extract sender ID from data.from.id
-    const senderId = data.from?.id;
-
-    if (!text) {
-      throw new Error(`Could not extract message text from response: ${JSON.stringify(data)}`);
-    }
-    if (!senderId) {
-      throw new Error(`Could not extract sender ID from response: ${JSON.stringify(data)}`);
-    }
-
-    return { text, senderId };
-  } catch (err) {
-    if (err.response) {
-      console.log("❌ GRAPH API ERROR RESPONSE:", JSON.stringify(err.response.data, null, 2));
-    }
-    throw err;
   }
+
+  if (!data) {
+    if (lastErr) throw lastErr;
+    throw new Error(`Both graph.instagram.com and graph.facebook.com returned empty response for mid: ${mid}`);
+  }
+
+  // Extract message text
+  let text = '';
+  if (data.message) {
+    text = typeof data.message === 'string' ? data.message : data.message.text;
+  }
+
+  // Extract sender ID
+  const senderId = data.from?.id;
+
+  if (!text) {
+    throw new Error(`Could not extract message text from response: ${JSON.stringify(data)}`);
+  }
+  if (!senderId) {
+    throw new Error(`Could not extract sender ID from response: ${JSON.stringify(data)}`);
+  }
+
+  return { text, senderId };
 }
 
 app.listen(PORT, () => {
