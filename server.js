@@ -58,66 +58,44 @@ app.post('/webhook', (req, res) => {
 async function processWebhookBackground(body) {
   console.log("🔍 BACKGROUND: Starting processing...");
   if (!body.entry || !Array.isArray(body.entry)) {
-    console.log("🔍 BACKGROUND: body.entry is not an array or is missing");
     return;
   }
 
-  console.log(`🔍 BACKGROUND: body.entry has ${body.entry.length} entries`);
-
   for (let i = 0; i < body.entry.length; i++) {
     const entry = body.entry[i];
-    console.log(`🔍 BACKGROUND: Entry [${i}] keys:`, Object.keys(entry));
 
     if (!entry.messaging || !Array.isArray(entry.messaging)) {
-      console.log(`🔍 BACKGROUND: Entry [${i}].messaging is not an array or is missing`);
       continue;
     }
 
-    console.log(`🔍 BACKGROUND: Entry [${i}].messaging has ${entry.messaging.length} events`);
-
     for (let j = 0; j < entry.messaging.length; j++) {
       const event = entry.messaging[j];
-      console.log(`🔍 BACKGROUND: Event [${i}][${j}] keys:`, Object.keys(event));
 
-      let senderId = event.sender?.id;
-      let messageText = event.message?.text;
+      const senderId = event.sender?.id;
+      const messageText = event.message?.text;
       const isEcho = event.message?.is_echo;
-      const messageEditMid = event.message_edit?.mid;
 
-      console.log(`🔍 BACKGROUND: senderId=${senderId}, messageText=${messageText}, messageEditMid=${messageEditMid}, isEcho=${isEcho}`);
+      console.log(`🔍 EVENT: senderId=${senderId}, messageText="${messageText || ''}", isEcho=${isEcho}`);
 
-      // Fallback for message_edit events (senderId can be missing in webhook body, fetch details instead)
-      if (!messageText && messageEditMid && !isEcho) {
-        try {
-          console.log(`🔍 BACKGROUND: Fallback condition met. Fetching details for mid: ${messageEditMid}`);
-          const details = await fetchMessageDetails(messageEditMid);
-          messageText = details.text;
-          senderId = details.senderId;
-          console.log(`🔧 FETCHED TEXT FROM EDIT EVENT: "${messageText}" FROM: ${senderId}`);
-        } catch (fetchErr) {
-          console.log("❌ ERROR:", fetchErr.stack || fetchErr.message);
-        }
-      }
-
-      // Only respond to messages that contain text and are not bot echos
+      // Respond only to incoming text messages from users (ignore bot echos)
       if (senderId && messageText && !isEcho) {
         console.log("🎯 REAL MESSAGE RECEIVED:", messageText, "FROM:", senderId);
 
         try {
-          // Call Gemini 2.0 Flash
-          console.log(`🔍 BACKGROUND: Requesting Gemini API for: "${messageText}"`);
+          // 1. Call Gemini API
+          console.log(`🤖 Requesting Gemini API for: "${messageText}"`);
           const replyText = await getGeminiResponse(messageText);
           console.log("🤖 GEMINI RESPONSE:", replyText);
 
-          // Send reply to Instagram
-          console.log(`🔍 BACKGROUND: Sending reply to Instagram for: ${senderId}`);
+          // 2. Send reply to Instagram
+          console.log(`📤 Sending reply to Instagram user: ${senderId}`);
           const igRes = await sendInstagramMessage(senderId, replyText);
           console.log("📤 SENT TO INSTAGRAM, status:", igRes.status);
         } catch (apiErr) {
-          console.log("❌ ERROR:", apiErr.stack || apiErr.message);
+          console.log("❌ ERROR processing message:", apiErr.stack || apiErr.message);
         }
       } else {
-        console.log(`🔍 BACKGROUND: Skipping response. Conditions not met. (hasText=${!!messageText}, isNotEcho=${!isEcho})`);
+        console.log(`ℹ️ Skipping non-text or echo event.`);
       }
     }
   }
